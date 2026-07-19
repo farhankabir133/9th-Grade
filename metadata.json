@@ -1,0 +1,6 @@
+{
+  "name": "9Th Grade AI",
+  "description": "An AI-powered Intelligent Learning Operating System for Bangladesh Competitive Exams featuring real-time rank prediction, adaptive mock tests, spaced repetition, a personalized Bangla AI Tutor, and handwriting written exam estimation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

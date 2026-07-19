@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Represents the student's competitive exam profile and learning state",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The student's full name" },
+        "phone": { "type": "string", "description": "Interactive mobile number used for updates" },
+        "examType": { "type": "string", "enum": ["BCS", "Admission", "SSC", "HSC"] },
+        "targetYear": { "type": "number" },
+        "streak": { "type": "number" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "learningStyle": { "type": "string", "enum": ["visual", "analytical", "verbal", "interactive"] },
+        "readinessScore": { "type": "number" },
+        "predictedRank": { "type": "number" },
+        "totalStudents": { "type": "number" },
+        "passingProbability": { "type": "number" },
+        "consistencyScore": { "type": "number" },
+        "district": { "type": "string" },
+        "archetype": { "type": "string" }
+      },
+      "required": ["name", "examType", "streak", "xp", "level"]
+    },
+    "UserAnalytics": {
+      "title": "UserAnalytics",
+      "description": "Granular user analytics, XP gains, percentiles, daily timelines, and subject masteries",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "totalXp": { "type": "number" },
+        "curLevel": { "type": "number" },
+        "cumulativePercentile": { "type": "number" },
+        "cohortRank": { "type": "number" },
+        "streak": { "type": "number" },
+        "masteryHeatmap": { "type": "object" },
+        "dailyStats": { "type": "array" }
+      },
+      "required": ["userId", "totalXp", "curLevel", "streak"]
+    },
+    "MemorySchedule": {
+      "title": "MemorySchedule",
+      "description": "Spaced repetition topics and active schedule tracking schema based on the SM-2 algorithm",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "items": { "type": "array" }
+      },
+      "required": ["userId", "items"]
+    },
+    "Circular": {
+      "title": "Circular",
+      "description": "Standardized competitive administrative or banking job circular in Bangladesh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "organization": { "type": "string" },
+        "vacancyCount": { "type": "number" },
+        "deadline": { "type": "string" },
+        "countdownDays": { "type": "number" },
+        "link": { "type": "string" },
+        "syllabusOverview": { "type": "array" }
+      },
+      "required": ["id", "title", "organization", "deadline"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Main parent collection mapping student metrics and states"
+    },
+    "/analytics/{userId}": {
+      "schema": "UserAnalytics",
+      "description": "Stores student daily tracking statistics and mastery values"
+    },
+    "/memory/{userId}": {
+      "schema": "MemorySchedule",
+      "description": "Spaced repetition items mapping schedules per student"
+    },
+    "/circulars/{circularId}": {
+      "schema": "Circular",
+      "description": "Standard and active job announcements feeds"
+    }
+  }
+}
