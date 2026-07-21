@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { createClient, User as SupabaseUser } from "@supabase/supabase-js";
-import { supabaseAsUser } from "../../config/supabase";
+import { User as SupabaseUser } from "@supabase/supabase-js";
+import { supabaseAsUser, createSupabaseClient } from "../../config/supabase.client";
 import { UserProfile, defaultUserProfile } from '../types';
 
 export enum OperationType {
@@ -71,10 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_ANON_KEY!
-    );
+    const supabase = createSupabaseClient();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const activeGuest = localStorage.getItem('ninthgrade_guest_user');
@@ -188,10 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpEmail = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
-      );
+      const supabase = createSupabaseClient();
 
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -217,10 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInEmail = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
-      );
+      const supabase = createSupabaseClient();
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -243,10 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInGoogle = async () => {
     setLoading(true);
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
-      );
+      const supabase = createSupabaseClient();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -267,10 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resolvedGuestName = guestName.trim() || 'Farhan Kabir (Guest)';
 
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
-      );
+      const supabase = createSupabaseClient();
 
       const { data, error } = await supabase.auth.signUp({
         email: `guest-${Date.now()}@local.dev`,
@@ -332,10 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('ninthgrade_guest_user');
       localStorage.removeItem('ninthgrade_guest_profile');
 
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
-      );
+      const supabase = createSupabaseClient();
 
       await supabase.auth.signOut();
       setProfile(null);
