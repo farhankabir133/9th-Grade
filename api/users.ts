@@ -9,7 +9,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get("/me", async (req: AuthRequest, res) => {
-  const userId = req.user?.id || (req.query.userId as string) || "farhan-uid";
+  const userId = req.user!.id;
   try {
     let profile = await UserRepo.getProfile(userId, req.accessToken);
     if (!profile) {
@@ -26,7 +26,7 @@ router.get("/me", async (req: AuthRequest, res) => {
 });
 
 router.patch("/profile", async (req: AuthRequest, res) => {
-  const userId = req.user?.id || (req.body.userId as string) || "farhan-uid";
+  const userId = req.user!.id;
   const updates = req.body.updates;
   if (!updates) {
     return res.status(400).json({ error: "No update parameters received" });
@@ -40,7 +40,7 @@ router.patch("/profile", async (req: AuthRequest, res) => {
 });
 
 router.post("/xp", async (req: AuthRequest, res) => {
-  const userId = req.user?.id || (req.body.userId as string) || "farhan-uid";
+  const userId = req.user!.id;
   const { xpAmount } = req.body;
   if (!xpAmount || typeof xpAmount !== "number") {
     return res.status(400).json({ error: "Invalid alignment parameters" });

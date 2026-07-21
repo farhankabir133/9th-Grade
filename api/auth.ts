@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { supabaseAdmin, supabaseAsUser } from "../config/supabase";
-import { AuthRequest } from "../server/middleware/auth.middleware";
+import { AuthRequest, authMiddleware } from "../server/middleware/auth.middleware";
 import { UserRepo } from "../repositories/user.repo";
 import { defaultUserProfile } from "../src/types";
 
@@ -33,16 +33,26 @@ router.post("/signup", async (req, res) => {
 
     await UserRepo.setProfile(userId, profile);
 
-    const { data: session, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
+    const { data: signInData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
       email,
-      options: { data: { name } },
+      password,
     });
+
+    if (signInError || !signInData.session) {
+      console.error("[auth/signup] User created but sign-in failed:", signInError);
+      return res.json({
+        status: "authenticated",
+        userId,
+        profile,
+        accessToken: null,
+      });
+    }
 
     res.json({
       status: "authenticated",
       userId,
       profile,
+      accessToken: signInData.session.access_token,
     });
   } catch (err: any) {
     res.status(500).json({ error: "Server error during signup", details: err.message });
@@ -107,9 +117,10 @@ router.post("/guest", async (req, res) => {
   const guestName = name?.trim() || "Guest User";
 
   try {
+    const guestPassword = Math.random().toString(36).slice(2);
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email: `guest-${Date.now()}@local.dev`,
-      password: Math.random().toString(36).slice(2),
+      password: guestPassword,
       email_confirm: true,
       user_metadata: { name: guestName, isGuest: true },
     });
@@ -126,24 +137,35 @@ router.post("/guest", async (req, res) => {
 
     await UserRepo.setProfile(userId, profile);
 
-    const { data: session, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
+    const { data: signInData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
       email: data.user.email!,
-      options: { data: { name: guestName } },
+      password: guestPassword,
     });
+
+    if (signInError || !signInData.session) {
+      console.error("[auth/guest] Guest created but sign-in failed:", signInError);
+      return res.json({
+        status: "authenticated",
+        userId,
+        profile,
+        isGuest: true,
+        accessToken: null,
+      });
+    }
 
     res.json({
       status: "authenticated",
       userId,
       profile,
       isGuest: true,
+      accessToken: signInData.session.access_token,
     });
   } catch (err: any) {
     res.status(500).json({ error: "Server error during guest signup", details: err.message });
   }
 });
 
-router.get("/session", (req: AuthRequest, res) => {
+router.get("/session", authMiddleware, (req: AuthRequest, res) => {
   if (!req.user) {
     return res.json({ authenticated: false });
   }
@@ -152,13 +174,13 @@ router.get("/session", (req: AuthRequest, res) => {
     authenticated: true,
     userId: req.user.id,
     email: req.user.email,
-    role: "student",
+    role: req.userRole || "student",
     plan: "premium",
     streak: 0,
   });
 });
 
-router.post("/logout", async (req, res) => {
+router.post("/logout", authMiddleware, async (req: AuthRequest, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.replace("Bearer ", "").trim();
