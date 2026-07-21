@@ -1,5 +1,10 @@
 import { Type } from "@google/genai";
 import { ai, callGeminiWithModelFallback, isQuotaExhausted, setQuotaExhausted, generateExamSystemPrompt, cleanAndParseJSON } from "../../config/gemini";
+import { groqClient } from "../../config/groq";
+import { callModelWithRouter, resolveTaskType, isGroqTask, isGeminiTask, TaskType, ModelCallRequest } from "./model-router.service";
+import { RetrievalService } from "./retrieval.service";
+import { ValidationService } from "./validation.service";
+import { PublishService } from "./publish.service";
 
 export class GeminiService {
   static async tutorSession(message: string, history: any[], examType?: string, subject?: string) {
@@ -198,83 +203,106 @@ You must respond in JSON formatted according to this schema:
   }
 
   static async generateAdaptiveQuestion(subject: string, topic: string, difficulty: string, examType?: string, localGenerator?: (allocs: any[], diff: string) => any[], questionLanguage?: string) {
-    if (!ai || isQuotaExhausted) {
-      if (localGenerator) {
-        const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
-        const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
-        if (procedurals.length > 0) {
-          return {
-            id: "local-" + Math.random().toString(36).substring(7),
-            ...procedurals[0],
-            isFallback: true
-          };
-        }
-      }
-      throw new Error("Local fallback generator missing or AI unconfigured.");
-    }
+    const taskType = resolveTaskType(subject, topic, examType);
 
-    let normType: 'BCS' | 'Bank' | '9th-Grade' = 'BCS';
-    if (examType === 'Bank') normType = 'Bank';
-    else if (examType === '9th-Grade' || examType === '9th Grade') normType = '9th-Grade';
-
-    try {
-      const response = await callGeminiWithModelFallback((model) => 
-        ai.models.generateContent({
-          model: model,
-          contents: `Generate a single challenging, highly relevant multiple choice question for a ${examType || "BCS"} exam in Bangladesh.
-Core subject requested: "${subject || "Bangla Language & Literature"}"
-Specific topic area: "${topic || "Syllabus high yield topics"}"
-Difficulty tier: "${difficulty || "Medium"}"
-Language Rule: ${questionLanguage === "English" ? "All text including the question, options, and explanation fields must be written in elegant academic English." : "Use refined, elegant academic Bengali (Bangla) unless specified otherwise (e.g. Bank Math or English)."}
-Include explanations in both Bangla and English explaining why options are wrong.`,
-          config: {
-            responseMimeType: "application/json",
-            temperature: 0.8,
-            systemInstruction: generateExamSystemPrompt(normType) + `\n\nCreate single questions with 4 logical and carefully constructed options. 
-Ensure there is exactly one correct answer.
-Your output JSON MUST perfectly conform to this schema:
-{
-  "text": "Detailed question in Bangla (and English where applicable)",
-  "options": ["Option A string", "Option B string", "Option C string", "Option D string"],
-  "correctIndex": number (0 to 3),
-  "subject": "Name of the Subject",
-  "topic": "Name of the Topic",
-  "difficulty": "Easy" | "Medium" | "Hard",
-  "explanations": {
-    "bn": "Deep explanation in Bangla of why the correct option is right and the background context of the formula/rule",
-    "en": "Detailed translation explanation in English for bilingual prep",
-    "wrongOptions": [
-      "Justification in Bangla for why option A is incorrect (if wrong)",
-      "Justification in Bangla for why option B is incorrect (if wrong)",
-      "Justification in Bangla for why option C is incorrect",
-      "Justification in Bangla for why option D is incorrect"
-    ]
-  }
-}`
+    if (isGroqTask(taskType)) {
+      if (!groqClient) {
+        if (localGenerator) {
+          const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
+          const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
+          if (procedurals.length > 0) {
+            return {
+              id: "local-" + Math.random().toString(36).substring(7),
+              ...procedurals[0],
+              isFallback: true
+            };
           }
-        })
-      );
-
-      const parsed = cleanAndParseJSON(response.text || "{}");
-      return {
-        id: "gen-" + Math.random().toString(36).substring(7),
-        ...parsed
-      };
-    } catch (err: any) {
-      console.warn("[9Th Grade AI] Single adaptive question generation error. Falling back to tailored procedural:", err.message);
-      if (localGenerator) {
-        const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
-        const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
-        if (procedurals.length > 0) {
-          return {
-            id: "fallback-" + Math.random().toString(36).substring(7),
-            ...procedurals[0],
-            isFallback: true
-          };
         }
+        throw new Error("GROQ_OFFLINE");
       }
-      throw err;
+
+      const prompt = "Generate a single challenging multiple choice question for a " + (examType || "BCS") + " exam. Subject: " + (subject || "General Studies") + ", Topic: " + (topic || "Syllabus Mastery") + ", Difficulty: " + (difficulty || "Medium") + ", Language: " + (questionLanguage === "English" ? "English" : "Bengali") + ". Output JSON: {text, options: [A,B,C,D], correctIndex, subject, topic, difficulty, explanations: {bn, en, wrongOptions}}";
+
+      try {
+        const result = await callModelWithRouter<any>({
+          taskType,
+          prompt,
+          systemInstruction: "You are a world-class question setter for competitive exams. Output valid JSON only.",
+          temperature: 0.8,
+        });
+        return {
+          id: "gen-" + Math.random().toString(36).substring(7),
+          ...result,
+        };
+      } catch (err: any) {
+        console.warn("[9Th Grade AI] Groq adaptive question failed, falling back to procedural:", err.message);
+        if (localGenerator) {
+          const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
+          const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
+          if (procedurals.length > 0) {
+            return {
+              id: "fallback-" + Math.random().toString(36).substring(7),
+              ...procedurals[0],
+              isFallback: true
+            };
+          }
+        }
+        throw err;
+      }
     }
+
+    if (isGeminiTask(taskType)) {
+      if (!ai || isQuotaExhausted) {
+        if (localGenerator) {
+          const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
+          const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
+          if (procedurals.length > 0) {
+            return {
+              id: "local-" + Math.random().toString(36).substring(7),
+              ...procedurals[0],
+              isFallback: true
+            };
+          }
+        }
+        throw new Error("GEMINI_OFFLINE");
+      }
+
+      try {
+        const response = await callGeminiWithModelFallback((model) => 
+          ai.models.generateContent({
+            model: model,
+            contents: "Generate a single challenging multiple choice question for " + (examType || "BCS") + " exam. Subject: " + (subject || "Bangla") + ", Topic: " + (topic || "General") + ", Difficulty: " + (difficulty || "Medium") + ", Language: " + (questionLanguage === "English" ? "English" : "Bengali") + ". Include explanations in Bangla and English.",
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.8,
+              systemInstruction: generateExamSystemPrompt(examType === 'Bank' ? 'Bank' : 'BCS') + " Create single questions with 4 logical options. Ensure exactly one correct answer. Output valid JSON matching: {text, options: [A,B,C,D], correctIndex, subject, topic, difficulty, explanations: {bn, en, wrongOptions: [A,B,C]}}"
+            }
+          })
+        );
+
+        const parsed = cleanAndParseJSON(response.text || "{}");
+        return {
+          id: "gen-" + Math.random().toString(36).substring(7),
+          ...parsed
+        };
+      } catch (err: any) {
+        console.warn("[9Th Grade AI] Single adaptive question generation error. Falling back to tailored procedural:", err.message);
+        if (localGenerator) {
+          const singleAlloc = [{ subject: subject || "General Studies", topic: topic || "Syllabus Mastery", count: 1 }];
+          const procedurals = localGenerator(singleAlloc, difficulty || "Medium");
+          if (procedurals.length > 0) {
+            return {
+              id: "fallback-" + Math.random().toString(36).substring(7),
+              ...procedurals[0],
+              isFallback: true
+            };
+          }
+        }
+        throw err;
+      }
+    }
+
+    throw new Error("Unsupported task type for adaptive question: " + taskType);
   }
 
   static async generateAdaptiveQuestions(options: {

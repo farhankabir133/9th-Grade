@@ -1184,28 +1184,53 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
       }
       
       try {
-        const response = await fetch("/api/ai/adaptive-question", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subject: currentQ.subject,
-            topic: currentQ.topic,
-            examType: currentMode.type,
-            difficulty: dynamicAdaptiveDifficulty,
-            questionLanguage: questionLanguage
-          })
-        });
-        if (response.ok) {
-          const newQ = await response.json();
-          if (newQ && newQ.text && !questions.some(q => q.text === newQ.text)) {
-            setQuestions(prev => [...prev, newQ]);
-            setCurrentIdx(prev => prev + 1);
-            setSelectedAnswer(null);
-            setIsAnswerConfirmed(false);
-            setIsCertain(true);
-            setEliminatedOptions([]);
-          } else {
-            handleCompleteExam();
+        let bankQuestions = await fetchQuestionsFromBank(
+          currentQ.subject,
+          currentQ.topic,
+          dynamicAdaptiveDifficulty,
+          currentMode.type,
+          1
+        );
+
+        let newQ = bankQuestions[0] || null;
+        let usedFallback = false;
+
+        if (!newQ) {
+          await logBankFallback(
+            currentQ.subject,
+            currentQ.topic,
+            dynamicAdaptiveDifficulty,
+            currentMode.type,
+            "no_approved_question_in_bank"
+          );
+          usedFallback = true;
+
+          const response = await fetch("/api/ai/adaptive-question", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: currentQ.subject,
+              topic: currentQ.topic,
+              examType: currentMode.type,
+              difficulty: dynamicAdaptiveDifficulty,
+              questionLanguage: questionLanguage
+            })
+          });
+
+          if (response.ok) {
+            newQ = await response.json();
+          }
+        }
+
+        if (newQ && newQ.text && !questions.some(q => q.text === newQ.text)) {
+          setQuestions(prev => [...prev, newQ]);
+          setCurrentIdx(prev => prev + 1);
+          setSelectedAnswer(null);
+          setIsAnswerConfirmed(false);
+          setIsCertain(true);
+          setEliminatedOptions([]);
+          if (usedFallback) {
+            setIsFallbackActive(true);
           }
         } else {
           handleCompleteExam();
@@ -1283,6 +1308,42 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
         }
         return item;
       }));
+    }
+  };
+
+  const fetchQuestionsFromBank = async (subject: string, topic: string, difficulty: string, examType: string, limit = 10): Promise<any[]> => {
+    const params = new URLSearchParams({
+      subject,
+      topic,
+      difficulty,
+      examType,
+      reviewStatus: 'approved',
+      limit: String(limit),
+    });
+
+    const response = await fetch(`/api/bank/questions?${params.toString()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.questions || [];
+  };
+
+  const logBankFallback = async (subject: string, topic: string, difficulty: string, examType: string, reason: string) => {
+    try {
+      await fetch("/api/ai/fallback-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject,
+          topic,
+          difficulty,
+          examType,
+          reason,
+          triggeredBy: "ExamEngine",
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch (err) {
+      console.error("[ExamEngine] Failed to log bank fallback:", err);
     }
   };
 
@@ -1401,7 +1462,6 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
     setCompilingError('');
     
     try {
-      // Build allocations list dynamically based on independent selected customLength & weights
       const allocations = getNormalizedAllocations(customLength, selectedSubjects, subjectCounts, topicCounts);
       
       if (allocations.length === 0) {
@@ -1409,31 +1469,107 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
         setCompilingError('অনুগ্রহ করে কমপক্ষে ১টি বিষয় বা টপিক সিলেক্ট করুন এবং প্রশ্নের সংখ্যা ১ বা তার বেশি দিন।');
         return;
       }
-      
-      const response = await fetch("/api/ai/batch-questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          examType: currentMode.type,
-          role: (currentMode as any).role || "",
-          difficulty: customDifficulty,
-          allocations: allocations,
-          subtopics: selectedSubtopics,
-          questionType: selectedQuestionType,
-          examMode: selectedExamModeSetting,
-          questionLanguage: questionLanguage
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error("সার্ভার থেকে প্রশ্ন তৈরিতে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।");
+
+      const bankQuestions: any[] = [];
+      const deficitAllocations: any[] = [];
+      let usedFallback = false;
+
+      for (const alloc of allocations) {
+        const fetched = await fetchQuestionsFromBank(
+          alloc.subject,
+          alloc.topic || "General",
+          customDifficulty,
+          currentMode.type,
+          alloc.count
+        );
+
+        if (fetched.length > 0) {
+          bankQuestions.push(...fetched);
+        }
+
+        if (fetched.length < alloc.count) {
+          const deficit = {
+            subject: alloc.subject,
+            topic: alloc.topic || "General",
+            count: alloc.count - fetched.length,
+          };
+          deficitAllocations.push(deficit);
+          usedFallback = true;
+
+          await logBankFallback(
+            alloc.subject,
+            alloc.topic || "General",
+            customDifficulty,
+            currentMode.type,
+            `bank_shortfall: requested ${alloc.count}, got ${fetched.length}`
+          );
+        }
       }
-      
-      const data = await response.json();
-      if (data && data.questions && data.questions.length > 0) {
-        setQuestions(data.questions);
-        setIsFallbackActive(!!data.isFallback);
-        recordSessionInHistory(data.questions, customDifficulty, selectedSubjects);
+
+      let finalQuestions = [...bankQuestions];
+
+      if (deficitAllocations.length > 0) {
+        const response = await fetch("/api/ai/batch-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            examType: currentMode.type,
+            role: (currentMode as any).role || "",
+            difficulty: customDifficulty,
+            allocations: deficitAllocations,
+            subtopics: selectedSubtopics,
+            questionType: selectedQuestionType,
+            examMode: selectedExamModeSetting,
+            questionLanguage: questionLanguage
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("সার্ভার থেকে প্রশ্ন তৈরিতে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।");
+        }
+
+        const data = await response.json();
+        if (data && data.questions && data.questions.length > 0) {
+          finalQuestions.push(...data.questions);
+        } else {
+          throw new Error("এআই ইঞ্জিন কোনো প্রশ্ন উত্তর দেয়নি।");
+        }
+      }
+
+      if (finalQuestions.length > 0) {
+        const deClusterQuestions = (qs: any[]): any[] => {
+          if (qs.length <= 2) return qs;
+          
+          const subjectsMap: Record<string, any[]> = {};
+          for (const q of qs) {
+            const subj = q.subject || "General";
+            if (!subjectsMap[subj]) {
+              subjectsMap[subj] = [];
+            }
+            subjectsMap[subj].push(q);
+          }
+          
+          const shuffledResult: any[] = [];
+          const subjectsList = Object.keys(subjectsMap);
+          subjectsList.sort((a, b) => subjectsMap[b].length - subjectsMap[a].length);
+          
+          let itemsRemaining = true;
+          while (itemsRemaining) {
+            itemsRemaining = false;
+            for (const subj of subjectsList) {
+              if (subjectsMap[subj].length > 0) {
+                shuffledResult.push(subjectsMap[subj].shift());
+                itemsRemaining = true;
+              }
+            }
+          }
+          return shuffledResult;
+        };
+
+        const clustered = deClusterQuestions(finalQuestions);
+        setQuestions(clustered);
+        setIsFallbackActive(usedFallback);
+        recordSessionInHistory(clustered, customDifficulty, selectedSubjects);
         setCurrentIdx(0);
         setSelectedAnswer(null);
         setIsAnswerConfirmed(false);
@@ -1443,7 +1579,7 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
         setIsCustomScrollMode(true);
         setEliminatedOptionsScroll({});
         
-        const totalCalculatedSeconds = data.questions.length * 40;
+        const totalCalculatedSeconds = clustered.length * 40;
         setSecondsRemaining(totalCalculatedSeconds);
         setTotalTimeLimit(totalCalculatedSeconds);
         setCompleted(false);

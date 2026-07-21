@@ -1,7 +1,9 @@
 export type ExamType = 'BCS' | 'BANK_AD' | 'NON_CADRE' | 'PRIMARY';
 
 export interface UserProfile {
+  id: string;
   name: string;
+  email: string;
   phone: string;
   examType: ExamType;
   targetYear: number;
@@ -125,7 +127,9 @@ export interface WrittenEvaluation {
 }
 
 export const defaultUserProfile: UserProfile = {
+  id: "",
   name: "Farhan Kabir",
+  email: "",
   phone: "01723456789",
   examType: "BCS",
   targetYear: 2026,

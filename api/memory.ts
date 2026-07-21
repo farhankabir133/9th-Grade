@@ -2,8 +2,11 @@ import { Router } from "express";
 import { MemoryRepo } from "../repositories/memory.repo";
 import { Sm2Algorithm } from "../services/memory/sm2.algorithm";
 import { MemoryScheduleModel, MemoryItemModel } from "../models/memory.model";
+import { AuthRequest, authMiddleware } from "../server/middleware/auth.middleware";
 
 const router = Router();
+
+router.use(authMiddleware);
 
 const DEFAULT_TOPICS = [
   { id: "sm-bcs-1", topic: "চর্যাপদ ও মধ্যযুগ", subject: "Bangla Language & Literature", urgencyScore: 92, retentionProbability: 40, daysSinceLastReview: 14, EF: 1.8, rep: 2, interval: 6 },
@@ -12,7 +15,6 @@ const DEFAULT_TOPICS = [
   { id: "sm-bcs-4", topic: "ধারা ও অনুক্রম", subject: "Mathematical Reasoning & Mental Ability", urgencyScore: 45, retentionProbability: 88, daysSinceLastReview: 3, EF: 2.5, rep: 5, interval: 24 }
 ];
 
-// Helper to initialize schedule representation
 function buildMockSchedule(userId: string): MemoryScheduleModel {
   const futureDate = (days: number) => {
     const d = new Date();
@@ -29,35 +31,29 @@ function buildMockSchedule(userId: string): MemoryScheduleModel {
     easinessFactor: t.EF,
     intervalDays: t.interval,
     repetitionCount: t.rep,
-    nextReviewDate: idx === 0 ? new Date().toISOString() : futureDate(t.interval), // make first one due immediately!
+    nextReviewDate: idx === 0 ? new Date().toISOString() : futureDate(t.interval),
     lastReviewDate: new Date().toISOString()
   }));
 
   return { userId, items };
 }
 
-// Endpoint: GET /api/memory/due
-router.get("/due", async (req, res) => {
-  const userId = (req.query.userId as string) || "farhan-uid";
+router.get("/due", async (req: AuthRequest, res) => {
+  const userId = req.user?.id || (req.query.userId as string) || "farhan-uid";
   try {
-    let schedule = await MemoryRepo.getMemorySchedule(userId);
+    let schedule = await MemoryRepo.getMemorySchedule(userId, req.accessToken);
     if (!schedule) {
       schedule = buildMockSchedule(userId);
-      await MemoryRepo.setMemorySchedule(userId, schedule);
+      await MemoryRepo.setMemorySchedule(userId, schedule, req.accessToken);
     }
 
-    // Filter items due today or in the past
     const now = new Date();
     const dueItems = schedule.items.map(item => {
       const isDue = new Date(item.nextReviewDate) <= now;
-      
-      // Compute retention on the fly
+
       const diffMs = Math.max(0, now.getTime() - new Date(item.lastReviewDate).getTime());
       const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      // Retention formula: e^(-t/S) where S is interval days
       const retention = Math.round(100 * Math.exp(-diffDays / (item.intervalDays || 1)));
-
-      // Urgency score: 0-100 derived from retention
       const urgency = Math.max(0, Math.min(100, Math.round(100 - retention)));
 
       return {
@@ -79,17 +75,16 @@ router.get("/due", async (req, res) => {
   }
 });
 
-// Endpoint: POST /api/memory/submit
-router.post("/submit", async (req, res) => {
-  const userId = (req.body.userId as string) || "farhan-uid";
-  const { topicId, quality } = req.body; // quality is 0-5
+router.post("/submit", async (req: AuthRequest, res) => {
+  const userId = req.user?.id || (req.body.userId as string) || "farhan-uid";
+  const { topicId, quality } = req.body;
 
   if (!topicId || quality === undefined || quality < 0 || quality > 5) {
     return res.status(400).json({ error: "Missing or invalid review input parameters" });
   }
 
   try {
-    let schedule = await MemoryRepo.getMemorySchedule(userId);
+    let schedule = await MemoryRepo.getMemorySchedule(userId, req.accessToken);
     if (!schedule) {
       schedule = buildMockSchedule(userId);
     }
@@ -109,7 +104,6 @@ router.post("/submit", async (req, res) => {
       quality
     );
 
-    // Apply calculated variables back to database item
     schedule.items[itemIdx] = {
       ...currentItem,
       easinessFactor: evaluated.easinessFactor,
@@ -119,7 +113,7 @@ router.post("/submit", async (req, res) => {
       lastReviewDate: new Date().toISOString()
     };
 
-    await MemoryRepo.setMemorySchedule(userId, schedule);
+    await MemoryRepo.setMemorySchedule(userId, schedule, req.accessToken);
 
     res.json({
       success: true,
@@ -138,17 +132,15 @@ router.post("/submit", async (req, res) => {
   }
 });
 
-// Endpoint: GET /api/memory/roadmap
-router.get("/roadmap", async (req, res) => {
-  const userId = (req.query.userId as string) || "farhan-uid";
+router.get("/roadmap", async (req: AuthRequest, res) => {
+  const userId = req.user?.id || (req.query.userId as string) || "farhan-uid";
   try {
-    let schedule = await MemoryRepo.getMemorySchedule(userId);
+    let schedule = await MemoryRepo.getMemorySchedule(userId, req.accessToken);
     if (!schedule) {
       schedule = buildMockSchedule(userId);
-      await MemoryRepo.setMemorySchedule(userId, schedule);
+      await MemoryRepo.setMemorySchedule(userId, schedule, req.accessToken);
     }
 
-    // Sort items chronologically by nextScheduledDate to compose learning timeline
     const timeline = [...schedule.items]
       .sort((a, b) => new Date(a.nextReviewDate).getTime() - new Date(b.nextReviewDate).getTime())
       .map(item => ({

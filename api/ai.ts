@@ -3,6 +3,10 @@ import { GeminiService } from "../services/ai/gemini.service";
 import { generateProceduralQuestions, getProceduralQuestionsForSubject } from "../utils/procedurals";
 import { ai, callGeminiWithModelFallback, isQuotaExhausted, cleanAndParseJSON } from "../config/gemini";
 import { Type } from "@google/genai";
+import { RetrievalService } from "../services/ai/retrieval.service";
+import { ValidationService } from "../services/ai/validation.service";
+import { PublishService } from "../services/ai/publish.service";
+import { supabaseAdmin } from "../config/supabase";
 
 const router = Router();
 
@@ -32,6 +36,13 @@ router.post("/written-evaluate", async (req, res) => {
 router.post("/adaptive-question", async (req, res) => {
   const { subject, topic, difficulty, examType, questionLanguage } = req.body;
   try {
+    const retrievalResults = await RetrievalService.retrieveForQuestionGeneration(
+      subject || "General Studies",
+      topic || "Syllabus Mastery",
+      examType || "BCS",
+      2
+    );
+
     const result = await GeminiService.generateAdaptiveQuestion(
       subject,
       topic,
@@ -40,6 +51,32 @@ router.post("/adaptive-question", async (req, res) => {
       generateProceduralQuestions,
       questionLanguage
     );
+
+    if (result && result.text) {
+      const schemaValidation = ValidationService.validateQuestionSchema(result);
+      if (!schemaValidation.valid) {
+        console.warn("[API] Schema validation failed:", schemaValidation.errors);
+      }
+
+      const isDuplicate = await ValidationService.checkDuplicateQuestion(
+        result.text,
+        result.subject || subject || "General",
+        result.topic || topic || "General"
+      );
+      if (isDuplicate) {
+        console.warn("[API] Duplicate question detected:", result.text.slice(0, 60));
+      }
+
+      try {
+        await PublishService.publishQuestion(result, {
+          modelUsed: "adaptive-question-pipeline",
+          taskType: "adaptive_question",
+        });
+      } catch (publishErr) {
+        console.warn("[API] Publish to question_bank failed:", publishErr);
+      }
+    }
+
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: "Failed to generate single dynamic question", details: err.message });
@@ -58,7 +95,6 @@ router.post("/batch-questions", async (req, res) => {
 
   const totalWanted = allocations.reduce((sum: number, alloc: any) => sum + (parseInt(alloc.count) || 0), 0);
 
-  // If Gemini API is unconfigured, return realistic tailored procedural content
   if (!ai) {
     console.log("[9Th Grade AI] Gemini unconfigured. Resorting to tailored procedural question generator.");
     const finalizedQs = generateProceduralQuestions(allocations, difficulty);
@@ -78,7 +114,6 @@ router.post("/batch-questions", async (req, res) => {
       maxQsPerJob = 20;
     }
 
-    // --- CONCEPT TRACKING & DUPLICATE DETECTION ENGINES (Session-wide) ---
     const sessionTestedConcepts = new Set<string>();
     const sessionQuestionTexts = new Set<string>();
     const sessionMathTemplates = new Set<string>();
@@ -86,8 +121,6 @@ router.post("/batch-questions", async (req, res) => {
 
     const jobs: Array<{ subject: string; topic: string; count: number }> = [];
 
-    // --- TOPIC DISTRIBUTION ENGINE ---
-    // Ensure diverse distribution of topics based on allocations
     for (const alloc of allocations) {
       const subject = alloc.subject;
       const topic = alloc.topic || "General";
@@ -121,7 +154,6 @@ router.post("/batch-questions", async (req, res) => {
         const maxRetries = 1;
         let jobQuestionsAccepted: any[] = [];
 
-        // Try generating and passing through validation panel
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
             const focusSubtopicsText = subtopics && Array.isArray(subtopics) && subtopics.length > 0
@@ -266,28 +298,24 @@ Your output must be flawless JSON matching the schema. Every question must posse
               let acceptedInBatch = 0;
 
               for (const q of batchQs) {
-                // 1. QUALITY SCORING ENGINE (Filter out anything under 80/100)
                 const overallScore = q.overallQualityScore || 0;
                 if (overallScore < 80) {
                   console.warn(`[9Th Grade AI OS] Rejecting Q due to Quality Score (${overallScore}/100): "${q.text.slice(0, 45)}..."`);
                   continue;
                 }
 
-                // 2. LEVEL-1 & LEVEL-2 TEXT DUPLICATE DETECTION
                 const normalizedText = q.text.replace(/\s+/g, '').toLowerCase();
                 if (sessionQuestionTexts.has(normalizedText)) {
                   console.warn(`[9Th Grade AI OS] Rejecting Q due to exact/normalized text duplication: "${q.text.slice(0, 45)}..."`);
                   continue;
                 }
 
-                // 3. LEVEL-3 CONCEPT TRACKING ENGINE (Unique concepts only)
                 const conceptKey = (q.concept || "").toLowerCase().trim();
                 if (conceptKey && sessionTestedConcepts.has(conceptKey)) {
                   console.warn(`[9Th Grade AI OS] Rejecting Q due to duplicate concept testing ("${q.concept}"): "${q.text.slice(0, 45)}..."`);
                   continue;
                 }
 
-                // 4. LEVEL-4 MATHEMATICAL TEMPLATE CHECK
                 if (job.subject.includes("Math") || job.subject.includes("Aptitude")) {
                   const strippedTemplate = q.text.replace(/\d+/g, '#').replace(/\s+/g, '').toLowerCase();
                   if (sessionMathTemplates.has(strippedTemplate)) {
@@ -297,7 +325,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
                   sessionMathTemplates.add(strippedTemplate);
                 }
 
-                // 5. ICT SPECIAL ROTATION CHECK
                 if (job.subject.includes("Computer") || job.subject.includes("ICT")) {
                   const lowerText = q.text.toLowerCase();
                   let subtopicKey = "";
@@ -314,7 +341,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
                   }
                 }
 
-                // Register Accepted Question
                 if (conceptKey) sessionTestedConcepts.add(conceptKey);
                 sessionQuestionTexts.add(normalizedText);
 
@@ -329,11 +355,9 @@ Your output must be flawless JSON matching the schema. Every question must posse
               console.log(`[9Th Grade AI OS] Batch Validation: Attempt ${attempt}/${maxRetries} accepted ${acceptedInBatch}/${job.count} questions.`);
               
               if (jobQuestionsAccepted.length >= job.count) {
-                // Fulfilled the job requirement completely
                 results.push(...jobQuestionsAccepted.slice(0, job.count));
                 break;
               } else {
-                // If we didn't get enough validated questions, retry to fetch the deficit
                 job.count = job.count - jobQuestionsAccepted.length;
                 results.push(...jobQuestionsAccepted);
                 jobQuestionsAccepted = [];
@@ -347,14 +371,14 @@ Your output must be flawless JSON matching the schema. Every question must posse
               errMsg = "Unknown batch question generation error";
             }
             const isTransient = errMsg.includes("429") || 
-                              errMsg.includes("503") || 
-                              errMsg.includes("quota") || 
-                              errMsg.includes("RESOURCE_EXHAUSTED") || 
-                              errMsg.includes("UNAVAILABLE") || 
-                              errMsg.includes("demand") || 
-                              errMsg.includes("temporary") || 
-                              err.status === 429 || 
-                              err.status === 503;
+                                errMsg.includes("503") || 
+                                errMsg.includes("quota") || 
+                                errMsg.includes("RESOURCE_EXHAUSTED") || 
+                                errMsg.includes("UNAVAILABLE") || 
+                                errMsg.includes("demand") || 
+                                errMsg.includes("temporary") || 
+                                err.status === 429 || 
+                                err.status === 503;
             
             if (isTransient && attempt < maxRetries) {
               console.warn(`[9Th Grade AI OS] Transient error hit (${err.status || '503/429'}). Retrying job in ${retryDelaySec}s... Attempt ${attempt}/${maxRetries}`);
@@ -368,7 +392,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
           }
         }
 
-        // Handle case where validation/generation came up short
         const currentCountInResults = results.filter(r => r.subject === job.subject && r.topic === job.topic).length;
         const totalAllocatedForThisJob = parseInt(allocations.find((a: any) => a.subject === job.subject && (a.topic || "General") === job.topic)?.count || "0");
         const missingCount = totalAllocatedForThisJob - currentCountInResults;
@@ -380,11 +403,9 @@ Your output must be flawless JSON matching the schema. Every question must posse
           
           for (const fq of fallbackQs) {
             const normalizedText = fq.text.replace(/\s+/g, '').toLowerCase();
-            // Verify procedural fallback is also non-duplicate in this session
             if (!sessionQuestionTexts.has(normalizedText)) {
               sessionQuestionTexts.add(normalizedText);
               
-              // Map all standard schema fields to the procedural question
               fq.concept = fq.concept || "Core syllabus baseline concept";
               fq.cognitiveDimension = fq.cognitiveDimension || "applied knowledge";
               fq.uniquenessScore = fq.uniquenessScore || 85;
@@ -405,7 +426,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
     const workers = Array(Math.min(concurrencyLimit, jobs.length)).fill(null).map(() => worker());
     await Promise.all(workers);
 
-    // Ensure we don't have duplicate IDs or mismatched counts
     let finalizedQs = results.map((q: any, idx: number) => ({
       ...q,
       id: "gen-batch-" + Math.random().toString(36).substring(7) + "-" + idx
@@ -429,7 +449,7 @@ Your output must be flawless JSON matching the schema. Every question must posse
           fq.syllabusRelevanceScore = fq.syllabusRelevanceScore || 95;
           fq.distractorQualityScore = fq.distractorQualityScore || 85;
           fq.overallQualityScore = fq.overallQualityScore || 85;
-          fq.recruitmentRelevance = fq.recruitmentRelevance || "Measures foundational capabilities required by recruitment syllabus.";
+          fq.recruitmentRelevance = fq.recruitmentRelevance || "Measures essential capabilities.";
           
           finalizedQs.push({
             ...fq,
@@ -439,8 +459,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
       }
     }
 
-    // --- EXAM COMPOSITION RULES: INTELLIGENT DE-CLUSTERING ---
-    // Avoid adjacent clustering of the same subjects so it feels curated
     const deClusterQuestions = (qs: any[]): any[] => {
       if (qs.length <= 2) return qs;
       
@@ -456,7 +474,6 @@ Your output must be flawless JSON matching the schema. Every question must posse
       const shuffledResult: any[] = [];
       const subjectsList = Object.keys(subjectsMap);
       
-      // Sort subjects by volume (highest first) to interleaving cleanly
       subjectsList.sort((a, b) => subjectsMap[b].length - subjectsMap[a].length);
       
       let itemsRemaining = true;
@@ -495,6 +512,32 @@ Your output must be flawless JSON matching the schema. Every question must posse
       console.error("[9Th Grade AI OS] Emergency compiler failure:", fallbackErr);
       res.status(500).json({ error: "Failed to generate batch questions", details: err.message });
     }
+  }
+});
+
+router.post("/fallback-log", async (req, res) => {
+  const { subject, topic, difficulty, examType, reason, triggeredBy } = req.body;
+
+  try {
+    await supabaseAdmin.from("generation_logs").insert({
+      task_type: "bank_fallback",
+      model_used: triggeredBy || "unknown",
+      exam_type: examType,
+      subject: subject,
+      topic: topic,
+      difficulty: difficulty,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      latency_ms: 0,
+      passed_validation: false,
+      retry_count: 0,
+      cost_usd: 0,
+    });
+
+    res.json({ logged: true });
+  } catch (err: any) {
+    console.error("[ai/fallback-log] Failed to log fallback:", err);
+    res.status(500).json({ error: "Failed to log fallback", details: err.message });
   }
 });
 

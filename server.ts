@@ -1,21 +1,26 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+
+dotenv.config();
 
 // Suppress benign Firestore gRPC idle stream cancellation messages from triggering false positive error trackers
 const originalConsoleError = console.error;
-console.error = function (...args) {
-  const isBenignFirestoreError = args.some(arg => {
-    if (typeof arg === 'string') {
-      return arg.includes('@firebase/firestore') || 
-             arg.includes('Disconnecting idle stream') || 
-             arg.includes('Timed out waiting for new targets') ||
-             arg.includes('CANCELLED');
+console.error = function (...args: any[]) {
+  const isBenignFirestoreError = args.some((arg: any) => {
+    if (typeof arg === "string") {
+      return (
+        arg.includes("@firebase/firestore") ||
+        arg.includes("Disconnecting idle stream") ||
+        arg.includes("Timed out waiting for new targets") ||
+        arg.includes("CANCELLED")
+      );
     }
-    if (arg && typeof arg === 'object' && (arg as any).message) {
-      return (arg as any).message.includes('Disconnecting idle stream') ||
-             (arg as any).message.includes('Timed out waiting for new targets');
+    if (arg && typeof arg === "object" && (arg as any).message) {
+      return (
+        (arg as any).message.includes("Disconnecting idle stream") ||
+        (arg as any).message.includes("Timed out waiting for new targets")
+      );
     }
     return false;
   });
@@ -27,13 +32,15 @@ console.error = function (...args) {
 };
 
 const originalConsoleWarn = console.warn;
-console.warn = function (...args) {
-  const isBenignFirestoreWarn = args.some(arg => {
-    if (typeof arg === 'string') {
-      return arg.includes('@firebase/firestore') || 
-             arg.includes('Disconnecting idle stream') || 
-             arg.includes('Timed out waiting for new targets') ||
-             arg.includes('CANCELLED');
+console.warn = function (...args: any[]) {
+  const isBenignFirestoreWarn = args.some((arg: any) => {
+    if (typeof arg === "string") {
+      return (
+        arg.includes("@firebase/firestore") ||
+        arg.includes("Disconnecting idle stream") ||
+        arg.includes("Timed out waiting for new targets") ||
+        arg.includes("CANCELLED")
+      );
     }
     return false;
   });
@@ -52,12 +59,12 @@ import memoryRouter from "./api/memory";
 import analyticsRouter from "./api/analytics";
 import circularsRouter from "./api/circulars";
 import leaderboardRouter from "./api/leaderboard";
+import adminRouter from "./api/admin";
+import bankRouter from "./api/bank";
+import reviewRouter from "./api/review";
 
-dotenv.config();
-
-async function startServer() {
+export function createApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json());
 
@@ -69,10 +76,14 @@ async function startServer() {
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/circulars", circularsRouter);
   app.use("/api/leaderboard", leaderboardRouter);
+  app.use("/api/admin", adminRouter);
+  app.use("/api/bank", bankRouter);
+  app.use("/api/review", reviewRouter);
 
   // Health check endpoint
   app.get("/api/health", (req, res) => {
-    const HAS_GEMINI = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
+    const HAS_GEMINI =
+      !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
     res.json({ status: "ok", geminiConfigured: HAS_GEMINI });
   });
 
@@ -83,23 +94,31 @@ async function startServer() {
     res.json({
       activeUsers,
       peakRankPredictedToday,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   });
 
+  return app;
+}
+
+async function startServer() {
+  const app = createApp();
+  const PORT = Number(process.env.PORT) || 3000;
+
   // === VITE MIDDLEWARE SETUP ===
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     // Serve index.html for any SPA routes
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
@@ -108,4 +127,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only start the server when run directly, not when imported (e.g., by Vercel serverless)
+if (process.env.VERCEL !== "1" && require.main === module) {
+  startServer();
+}

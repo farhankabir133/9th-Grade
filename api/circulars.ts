@@ -53,12 +53,11 @@ const INITIAL_CIRCULARS: CircularModel[] = [
   }
 ];
 
-// Lazy-load database with raw documents if collection is completely fresh
 async function seedCirculars() {
   try {
     const existing = await CircularRepo.getAllCirculars();
     if (existing.length === 0) {
-      console.log("[9Th Grade AI] Seeding initial central circular index documents to Firestore...");
+      console.log("[9Th Grade AI] Seeding initial central circular index documents to Supabase...");
       for (const circ of INITIAL_CIRCULARS) {
         await CircularRepo.saveCircular(circ);
       }
@@ -68,10 +67,8 @@ async function seedCirculars() {
   }
 }
 
-// Ensure seeding triggers
 seedCirculars();
 
-// Endpoint: GET /api/circulars
 router.get("/", async (req, res) => {
   try {
     let circulars = await CircularRepo.getAllCirculars();
@@ -79,7 +76,6 @@ router.get("/", async (req, res) => {
       circulars = INITIAL_CIRCULARS;
     }
 
-    // Dynamic count downs
     const now = new Date();
     const evaluated = circulars.map((c) => {
       const targetDate = new Date(c.deadline);
@@ -97,22 +93,19 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Endpoint: GET /api/circulars/latest
 router.get("/latest", async (req, res) => {
   try {
     let circulars = await CircularRepo.getAllCirculars();
     if (circulars.length === 0) {
       circulars = INITIAL_CIRCULARS;
     }
-    
-    // Sort and returns the newest listing
+
     res.json(circulars.slice(0, 2));
   } catch (err: any) {
     res.status(500).json({ error: "Failed to compile latest circular feeds", details: err.message });
   }
 });
 
-// Endpoint: GET /api/circulars/:id
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -126,7 +119,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Endpoint: POST /api/circulars/ingest
 router.post("/ingest", async (req, res) => {
   const { id, title, organization, vacancyCount, deadline, link, syllabusOverview } = req.body;
   if (!id || !title || !organization || !deadline) {
@@ -139,7 +131,7 @@ router.post("/ingest", async (req, res) => {
     organization,
     vacancyCount: vacancyCount || 0,
     deadline,
-    countdownDays: 30, // calculated later
+    countdownDays: 30,
     link: link || "#",
     syllabusOverview: syllabusOverview || []
   };

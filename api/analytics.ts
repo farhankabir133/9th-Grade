@@ -4,10 +4,12 @@ import { UserRepo } from "../repositories/user.repo";
 import { PercentileService } from "../services/analytics/percentile.service";
 import { UserAnalyticsModel } from "../models/analytics.model";
 import { defaultUserProfile } from "../src/types";
+import { AuthRequest, authMiddleware } from "../server/middleware/auth.middleware";
 
 const router = Router();
 
-// Constant mock defaults for dashboard representation
+router.use(authMiddleware);
+
 const DEFAULT_SUBJECT_MASTERY = [
   { subject: "Bangla Language & Literature", score: 82, color: "#f43f5e" },
   { subject: "English Language & Literature", score: 76, color: "#3b82f6" },
@@ -24,7 +26,6 @@ const DEFAULT_RANK_HISTORY = [
   { date: "June 16", rank: 342, percentile: 99.24 }
 ];
 
-// Helper to construct mock analytical state
 function buildAnalytics(userId: string, xp: number, streak: number): UserAnalyticsModel {
   const mastery: Record<string, number> = {};
   DEFAULT_SUBJECT_MASTERY.forEach(m => {
@@ -45,25 +46,23 @@ function buildAnalytics(userId: string, xp: number, streak: number): UserAnalyti
   };
 }
 
-// Endpoint: GET /api/analytics/dashboard
-router.get("/dashboard", async (req, res) => {
-  const userId = (req.query.userId as string) || "farhan-uid";
+router.get("/dashboard", async (req: AuthRequest, res) => {
+  const userId = req.user?.id || (req.query.userId as string) || "farhan-uid";
   try {
-    let profile = await UserRepo.getProfile(userId);
+    let profile = await UserRepo.getProfile(userId, req.accessToken);
     if (!profile) {
-      profile = { ...defaultUserProfile };
+      profile = { ...defaultUserProfile, name: req.user?.email?.split("@")[0] || "User" };
     }
 
-    let stats = await AnalyticsRepo.getAnalytics(userId);
+    let stats = await AnalyticsRepo.getAnalytics(userId, req.accessToken);
     if (!stats) {
       stats = buildAnalytics(userId, profile.xp, profile.streak);
-      await AnalyticsRepo.setAnalytics(userId, stats);
+      await AnalyticsRepo.setAnalytics(userId, stats, req.accessToken);
     }
 
-    // Connect to dynamic percentile calculation engine
     const scores = Object.values(stats.masteryHeatmap);
     const avgScore = scores.reduce((sum, s) => sum + s, 0) / (scores.length || 1);
-    
+
     const evaluation = PercentileService.calculatePercentile({
       accuracy: Math.round(avgScore),
       xp: profile.xp,
@@ -114,7 +113,6 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
-// Endpoint: GET /api/analytics/cohort
 router.get("/cohort", (req, res) => {
   res.json({
     cohortSize: 450000,
@@ -131,25 +129,21 @@ router.get("/cohort", (req, res) => {
   });
 });
 
-// Endpoint: POST /api/analytics/event
-router.post("/event", async (req, res) => {
-  const userId = (req.body.userId as string) || "farhan-uid";
-  const { eventType, value, subject } = req.body; // e.g. quiz_completed, accuracy_gain
+router.post("/event", async (req: AuthRequest, res) => {
+  const userId = req.user?.id || (req.body.userId as string) || "farhan-uid";
+  const { eventType, value, subject } = req.body;
 
   try {
-    let stats = await AnalyticsRepo.getAnalytics(userId);
+    let stats = await AnalyticsRepo.getAnalytics(userId, req.accessToken);
     if (!stats) {
       stats = buildAnalytics(userId, 3250, 12);
     }
 
     if (eventType === "quiz_completed" && subject && value) {
-      // Modify subject mastery
       const currentVal = stats.masteryHeatmap[subject] || 60;
-      // Weighted adjustment
       stats.masteryHeatmap[subject] = Math.round(currentVal * 0.9 + value * 0.1);
     }
 
-    // append timeline event
     stats.dailyStats.push({
       date: new Date().toISOString().split("T")[0],
       xpEarned: eventType === "quiz_completed" ? 150 : 50,
@@ -158,7 +152,7 @@ router.post("/event", async (req, res) => {
       timeSpentSeconds: 300
     });
 
-    await AnalyticsRepo.setAnalytics(userId, stats);
+    await AnalyticsRepo.setAnalytics(userId, stats, req.accessToken);
 
     res.json({ success: true, updatedStats: stats });
   } catch (err: any) {
