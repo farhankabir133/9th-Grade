@@ -53,22 +53,6 @@ const INITIAL_CIRCULARS: CircularModel[] = [
   }
 ];
 
-async function seedCirculars() {
-  try {
-    const existing = await CircularRepo.getAllCirculars();
-    if (existing.length === 0) {
-      console.log("[9Th Grade AI] Seeding initial central circular index documents to Supabase...");
-      for (const circ of INITIAL_CIRCULARS) {
-        await CircularRepo.saveCircular(circ);
-      }
-    }
-  } catch (err: any) {
-    console.error("[9Th Grade AI] Failed to check/seed circulars data:", err.message);
-  }
-}
-
-seedCirculars();
-
 router.get("/", async (req, res) => {
   try {
     let circulars = await CircularRepo.getAllCirculars();
