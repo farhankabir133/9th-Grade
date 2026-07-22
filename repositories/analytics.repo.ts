@@ -3,7 +3,7 @@ import { UserAnalyticsModel } from "../models/analytics.model";
 
 export class AnalyticsRepo {
   static async getAnalytics(userId: string, accessToken?: string): Promise<UserAnalyticsModel | null> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { data: analytics, error: analyticsError } = await client
       .from("user_analytics")
       .select("*")
@@ -37,7 +37,7 @@ export class AnalyticsRepo {
   }
 
   static async setAnalytics(userId: string, data: UserAnalyticsModel, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { error: analyticsError } = await client.from("user_analytics").upsert({
       user_id: userId,
       total_xp: data.totalXp,
@@ -74,7 +74,7 @@ export class AnalyticsRepo {
   }
 
   static async updateAnalytics(userId: string, data: Partial<UserAnalyticsModel>, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const updateData: Record<string, any> = {};
     if (data.totalXp !== undefined) updateData.total_xp = data.totalXp;
     if (data.curLevel !== undefined) updateData.cur_level = data.curLevel;

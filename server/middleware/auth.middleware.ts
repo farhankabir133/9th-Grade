@@ -24,7 +24,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       return res.status(401).json({ error: "Empty authorization token" });
     }
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const { data, error } = await supabaseAdmin().auth.getUser(token);
 
     if (error || !data.user) {
       return res.status(401).json({ error: "Invalid or expired token" });
@@ -36,7 +36,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     };
     req.accessToken = token;
 
-    const { data: roleData } = await supabaseAdmin
+    const { data: roleData } = await supabaseAdmin()
       .from("user_roles")
       .select("role")
       .eq("user_id", data.user.id)

@@ -4,8 +4,10 @@ import {
   RefreshCw, TrendingUp, AlertCircle, ArrowUpRight, BookOpen, Camera 
 } from 'lucide-react';
 import { WrittenEvaluation } from '../types';
+import { useAuth } from '../lib/AuthContext.tsx';
 
 export default function WrittenEvaluator() {
+  const { accessToken } = useAuth();
   const [title, setTitle] = useState<string>('38th BCS Written Gen studies draft: Geopolitics of Bay of Bengal');
   const [subject, setSubject] = useState<string>('Geopolitics & Bangladesh Foreign Policy');
   const [draftText, setDraftText] = useState<string>(
@@ -42,7 +44,10 @@ export default function WrittenEvaluator() {
     try {
       const response = await fetch('/api/ai/written-evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({
           submissionText: draftText,
           title,

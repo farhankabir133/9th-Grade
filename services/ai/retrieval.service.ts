@@ -27,7 +27,7 @@ export class RetrievalService {
   ): Promise<RetrievalResult[]> {
     const limit = options?.limit || 5;
 
-    let queryBuilder = supabaseAdmin
+    let queryBuilder = supabaseAdmin()
       .from("source_documents")
       .select("*");
 

@@ -16,7 +16,7 @@ export class PublishService {
       sourceDocumentIds?: string[];
     }
   ): Promise<PublishResult> {
-    const { data: questionRow, error: questionError } = await supabaseAdmin
+    const { data: questionRow, error: questionError } = await supabaseAdmin()
       .from("question_bank")
       .upsert({
         id: question.id || `q-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -42,7 +42,7 @@ export class PublishService {
       return { questionId: question.id || "unknown", published: false };
     }
 
-    const { data: reviewRow, error: reviewError } = await supabaseAdmin
+    const { data: reviewRow, error: reviewError } = await supabaseAdmin()
       .from("review_queue")
       .insert({
         question_bank_id: questionRow.id,
@@ -72,7 +72,7 @@ export class PublishService {
     retryCount: number;
     costUsd?: number;
   }): Promise<void> {
-    await supabaseAdmin.from("generation_logs").insert({
+    await supabaseAdmin().from("generation_logs").insert({
       task_type: params.taskType,
       model_used: params.modelUsed,
       prompt_tokens: params.promptTokens || 0,

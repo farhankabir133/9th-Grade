@@ -4,6 +4,7 @@ import {
   HelpCircle, CheckCircle2, Globe, Flame, RefreshCw, MessageCircle 
 } from 'lucide-react';
 import { Message, ExamType } from '../types';
+import { useAuth } from '../lib/AuthContext.tsx';
 
 interface AITutorProps {
   examType: ExamType;
@@ -12,6 +13,7 @@ interface AITutorProps {
 
 export default function AITutor({ examType, initialTopic }: AITutorProps) {
   
+  const { accessToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "wel-1",
@@ -60,7 +62,10 @@ export default function AITutor({ examType, initialTopic }: AITutorProps) {
     try {
       const response = await fetch('/api/ai/tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({
           message: userMsg.text,
           history: messages.slice(-6), // Send last 3 rounds

@@ -3,7 +3,7 @@ import { MemoryScheduleModel, MemoryItemModel } from "../models/memory.model";
 
 export class MemoryRepo {
   static async getMemorySchedule(userId: string, accessToken?: string): Promise<MemoryScheduleModel | null> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { data: schedule, error: scheduleError } = await client
       .from("memory_schedules")
       .select("*")
@@ -38,7 +38,7 @@ export class MemoryRepo {
   }
 
   static async setMemorySchedule(userId: string, data: MemoryScheduleModel, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { error: scheduleError } = await client
       .from("memory_schedules")
       .upsert({

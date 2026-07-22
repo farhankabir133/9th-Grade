@@ -3,7 +3,7 @@ import { UserProfileModel } from "../models/user.model";
 
 export class UserRepo {
   static async getProfile(userId: string, accessToken?: string): Promise<UserProfileModel | null> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { data, error } = await client
       .from("profiles")
       .select("*")
@@ -31,7 +31,7 @@ export class UserRepo {
   }
 
   static async setProfile(userId: string, profile: UserProfileModel, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const { error } = await client.from("profiles").upsert({
       id: userId,
       name: profile.name,
@@ -55,7 +55,7 @@ export class UserRepo {
   }
 
   static async updateProfile(userId: string, partial: Partial<UserProfileModel>, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     const updateData: Record<string, any> = {};
     if (partial.name !== undefined) updateData.name = partial.name;
     if (partial.phone !== undefined) updateData.phone = partial.phone;

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabaseAdmin } from "../config/supabase";
+import { supabaseAdmin, supabaseAsUser } from "../config/supabase";
 import { callModelWithRouter, resolveTaskType, isGeminiTask, isGroqTask } from "../services/ai/model-router.service";
 import { RetrievalService } from "../services/ai/retrieval.service";
 import { ValidationService } from "../services/ai/validation.service";
@@ -53,7 +53,7 @@ async function runReplenishment(req: AuthRequest, res: any) {
 
     const difficulties = ["Easy", "Medium", "Hard"];
 
-    const { data: stockData, error: stockError } = await supabaseAdmin
+    const { data: stockData, error: stockError } = await supabaseAdmin()
       .from("question_bank")
       .select("exam_type, subject, topic, difficulty", { count: "exact", head: false });
 

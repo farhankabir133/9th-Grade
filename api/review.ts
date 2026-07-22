@@ -10,7 +10,7 @@ router.use(requireRole("reviewer", "admin"));
 
 router.get("/queue", async (req: AuthRequest, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin()
       .from("review_queue")
       .select(`
         id,
@@ -78,7 +78,7 @@ router.post("/:id/decide", async (req: AuthRequest, res) => {
   }
 
   try {
-    const { data: queueItem, error: fetchError } = await supabaseAdmin
+    const { data: queueItem, error: fetchError } = await supabaseAdmin()
       .from("review_queue")
       .select("*")
       .eq("id", id)
@@ -88,7 +88,7 @@ router.post("/:id/decide", async (req: AuthRequest, res) => {
       return res.status(404).json({ error: "Review queue item not found" });
     }
 
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin()
       .from("review_queue")
       .update({
         status: "resolved",
@@ -104,7 +104,7 @@ router.post("/:id/decide", async (req: AuthRequest, res) => {
     }
 
     if (decision === "approve") {
-      const { error: approveError } = await supabaseAdmin
+      const { error: approveError } = await supabaseAdmin()
         .from("question_bank")
         .update({ review_status: "approved" })
         .eq("id", queueItem.question_bank_id);
@@ -113,7 +113,7 @@ router.post("/:id/decide", async (req: AuthRequest, res) => {
         console.error("[review] Failed to approve question:", approveError);
       }
     } else if (decision === "reject") {
-      const { error: rejectError } = await supabaseAdmin
+      const { error: rejectError } = await supabaseAdmin()
         .from("question_bank")
         .update({ review_status: "rejected" })
         .eq("id", queueItem.question_bank_id);

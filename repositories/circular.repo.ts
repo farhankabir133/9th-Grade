@@ -3,7 +3,7 @@ import { CircularModel } from "../models/circular.model";
 
 export class CircularRepo {
   static async getAllCirculars(accessToken?: string): Promise<CircularModel[]> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     try {
       const { data, error } = await client
         .from("circulars")
@@ -29,7 +29,7 @@ export class CircularRepo {
   }
 
   static async getCircularById(id: string, accessToken?: string): Promise<CircularModel | null> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     try {
       const { data, error } = await client
         .from("circulars")
@@ -56,7 +56,7 @@ export class CircularRepo {
   }
 
   static async saveCircular(data: CircularModel, accessToken?: string): Promise<void> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
     try {
       const { error } = await client.from("circulars").upsert({
         id: data.id,

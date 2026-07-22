@@ -40,6 +40,7 @@ interface AuthContextType {
   user: SupabaseUser | null;
   profile: UserProfile | null;
   loading: boolean;
+  accessToken: string | null;
   signUpEmail: (email: string, password: string, name: string) => Promise<void>;
   signInEmail: (email: string, password: string) => Promise<void>;
   signInGoogle: () => Promise<void>;
@@ -71,6 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const savedAccessToken = localStorage.getItem('ninthgrade_access_token');
+
     const supabase = createSupabaseClient();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -83,14 +86,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         setUser(session.user);
         setAccessToken(session.access_token);
+        localStorage.setItem('ninthgrade_access_token', session.access_token);
         loadProfile(session.user.id, session.access_token);
       } else {
         setUser(null);
         setProfile(null);
         setAccessToken(null);
+        localStorage.removeItem('ninthgrade_access_token');
         setLoading(false);
       }
     });
+
+    const restoreFromBackend = async () => {
+      if (!savedAccessToken) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/session', {
+          headers: {
+            Authorization: `Bearer ${savedAccessToken}`
+          }
+        });
+
+        const data = await response.json();
+        if (response.ok && data.authenticated) {
+          setAccessToken(savedAccessToken);
+          await loadProfile(data.userId, savedAccessToken);
+          const mockUser = {
+            id: data.userId,
+            email: data.email,
+            user_metadata: { name: data.name }
+          } as any;
+          setUser(mockUser);
+        } else {
+          localStorage.removeItem('ninthgrade_access_token');
+          setLoading(false);
+        }
+      } catch (error) {
+        localStorage.removeItem('ninthgrade_access_token');
+        setLoading(false);
+      }
+    };
+
+    restoreFromBackend();
 
     return () => {
       subscription.unsubscribe();
@@ -185,22 +225,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpEmail = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const supabase = createSupabaseClient();
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { name }
-        }
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, name })
       });
 
-      if (error) throw error;
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Signup failed');
+      }
 
-      if (data.user && data.session) {
-        setUser(data.user);
-        setAccessToken(data.session.access_token);
-        await loadProfile(data.user.id, data.session.access_token);
+      if (data.status === 'authenticated' && data.userId) {
+        const mockUser = {
+          id: data.userId,
+          email,
+          user_metadata: { name }
+        } as any;
+
+        setUser(mockUser);
+        setAccessToken(data.accessToken);
+        localStorage.setItem('ninthgrade_access_token', data.accessToken);
+        if (data.profile) {
+          setProfile(data.profile);
+        } else {
+          await loadProfile(data.userId, data.accessToken);
+        }
       }
     } catch (error) {
       setLoading(false);
@@ -211,19 +261,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInEmail = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const supabase = createSupabaseClient();
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
 
-      if (error) throw error;
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Signin failed');
+      }
 
-      if (data.user && data.session) {
-        setUser(data.user);
-        setAccessToken(data.session.access_token);
-        await loadProfile(data.user.id, data.session.access_token);
+      if (data.status === 'authenticated' && data.userId) {
+        const mockUser = {
+          id: data.userId,
+          email,
+          user_metadata: { name: data.profile?.name }
+        } as any;
+
+        setUser(mockUser);
+        setAccessToken(data.accessToken);
+        localStorage.setItem('ninthgrade_access_token', data.accessToken);
+        if (data.profile) {
+          setProfile(data.profile);
+        } else {
+          await loadProfile(data.userId, data.accessToken);
+        }
       }
     } catch (error) {
       setLoading(false);
@@ -255,22 +318,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resolvedGuestName = guestName.trim() || 'Farhan Kabir (Guest)';
 
     try {
-      const supabase = createSupabaseClient();
-
-      const { data, error } = await supabase.auth.signUp({
-        email: `guest-${Date.now()}@local.dev`,
-        password: Math.random().toString(36).slice(2),
-        options: {
-          data: { name: resolvedGuestName, isGuest: true }
-        }
+      const response = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: resolvedGuestName })
       });
 
-      if (error) throw error;
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Guest signup failed');
+      }
 
-      if (data.user && data.session) {
+      if (data.status === 'authenticated' && data.userId) {
         const mockUserItem = {
-          uid: data.user.id,
-          email: data.user.email ?? 'guest@local.dev',
+          uid: data.userId,
+          email: 'guest@local.dev',
           displayName: resolvedGuestName,
           emailVerified: true,
           isAnonymous: true,
@@ -279,9 +341,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         const mockProfileItem: UserProfile = {
-          id: data.user.id,
+          id: data.userId,
           name: resolvedGuestName,
-          email: data.user.email ?? '',
+          email: '',
           phone: '',
           examType: 'BCS',
           targetYear: 2027,
@@ -302,7 +364,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('ninthgrade_guest_profile', JSON.stringify(mockProfileItem));
         setUser(mockUserItem as unknown as SupabaseUser);
         setProfile(mockProfileItem);
-        setAccessToken(data.session.access_token);
+        setAccessToken(data.accessToken);
+        localStorage.setItem('ninthgrade_access_token', data.accessToken);
         setLoading(false);
       }
     } catch (error) {
@@ -317,8 +380,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('ninthgrade_guest_user');
       localStorage.removeItem('ninthgrade_guest_profile');
 
-      const supabase = createSupabaseClient();
+      if (accessToken) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`
+          }
+        });
+      }
 
+      const supabase = createSupabaseClient();
       await supabase.auth.signOut();
       setProfile(null);
       setUser(null);
@@ -383,6 +455,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     profile,
     loading,
+    accessToken,
     signUpEmail,
     signInEmail,
     signInGoogle,

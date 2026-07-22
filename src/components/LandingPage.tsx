@@ -9,6 +9,7 @@ import {
   Clock, Play, RotateCcw, Flame, Zap, ArrowLeft, Send, Menu, X
 } from 'lucide-react';
 import { ExamType, Question } from '../types';
+import { useAuth } from '../lib/AuthContext.tsx';
 
 interface LandingPageProps {
   onStartOnboarding: (selectedExam: ExamType) => void;
@@ -139,6 +140,7 @@ export default function LandingPage({
   onViewTerminal,
   onViewVision
 }: LandingPageProps) {
+  const { accessToken } = useAuth();
   const [hoveredNav, setHoveredNav] = useState<string | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamType>('BCS');
@@ -590,7 +592,10 @@ export default function LandingPage({
       
       const response = await fetch('/api/ai/adaptive-question', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({
           subject: randomSubject,
           topic: examMode === 'BANK_AD' ? "IBA high speed analytical quantitative and english" : "Syllabus high yield topics",
@@ -816,7 +821,10 @@ Keep your response professional and fully bilingual.`;
 
       const response = await fetch('/api/ai/tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({ message: userMessage })
       });
       const data = await response.json();
@@ -838,7 +846,10 @@ Keep your response professional and fully bilingual.`;
     try {
       const response = await fetch('/api/ai/tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({ message: `Follow-up query: "${userMsgText}" regarding original question "${sampleQuestion.text}".` })
       });
       const data = await response.json();

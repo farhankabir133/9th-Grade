@@ -85,7 +85,7 @@ export class ValidationService {
   ): Promise<boolean> {
     const normalizedText = questionText.replace(/\s+/g, "").toLowerCase();
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin()
       .from("question_bank")
       .select("id, question_text")
       .eq("subject", subject)

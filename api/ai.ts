@@ -519,7 +519,7 @@ router.post("/fallback-log", async (req, res) => {
   const { subject, topic, difficulty, examType, reason, triggeredBy } = req.body;
 
   try {
-    await supabaseAdmin.from("generation_logs").insert({
+    await supabaseAdmin().from("generation_logs").insert({
       task_type: "bank_fallback",
       model_used: triggeredBy || "unknown",
       exam_type: examType,

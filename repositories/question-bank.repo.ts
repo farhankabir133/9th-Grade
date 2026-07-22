@@ -42,7 +42,7 @@ export interface QuestionBankFilters {
 
 export class QuestionBankRepo {
   static async getQuestions(filters: QuestionBankFilters, accessToken?: string): Promise<QuestionBankItem[]> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
 
     let query = client
       .from("question_bank")
@@ -102,7 +102,7 @@ export class QuestionBankRepo {
   }
 
   static async getQuestionById(id: string, accessToken?: string): Promise<QuestionBankItem | null> {
-    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin;
+    const client = accessToken ? supabaseAsUser(accessToken) : supabaseAdmin();
 
     const { data, error } = await client
       .from("question_bank")

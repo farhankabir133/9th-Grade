@@ -13,7 +13,7 @@ router.post("/signup", async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    const { data, error } = await supabaseAdmin().auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -33,7 +33,7 @@ router.post("/signup", async (req, res) => {
 
     await UserRepo.setProfile(userId, profile);
 
-    const { data: signInData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: signInData, error: signInError } = await supabaseAdmin().auth.signInWithPassword({
       email,
       password,
     });
@@ -66,7 +66,7 @@ router.post("/signin", async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    const { data, error } = await supabaseAdmin().auth.signInWithPassword({
       email,
       password,
     });
@@ -93,7 +93,7 @@ router.post("/google", async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.auth.signInWithIdToken({
+    const { data, error } = await supabaseAdmin().auth.signInWithIdToken({
       provider: "google",
       token: idToken,
     });
@@ -118,7 +118,7 @@ router.post("/guest", async (req, res) => {
 
   try {
     const guestPassword = Math.random().toString(36).slice(2);
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    const { data, error } = await supabaseAdmin().auth.admin.createUser({
       email: `guest-${Date.now()}@local.dev`,
       password: guestPassword,
       email_confirm: true,
@@ -137,7 +137,7 @@ router.post("/guest", async (req, res) => {
 
     await UserRepo.setProfile(userId, profile);
 
-    const { data: signInData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: signInData, error: signInError } = await supabaseAdmin().auth.signInWithPassword({
       email: data.user.email!,
       password: guestPassword,
     });
@@ -184,7 +184,7 @@ router.post("/logout", authMiddleware, async (req: AuthRequest, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.replace("Bearer ", "").trim();
-    await supabaseAdmin.auth.admin.signOut(token);
+    await supabaseAdmin().auth.admin.signOut(token);
   }
 
   res.json({ status: "logged_out" });

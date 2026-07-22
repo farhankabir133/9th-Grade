@@ -10,6 +10,7 @@ import {
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Question, ExamSession } from '../types';
+import { useAuth } from '../lib/AuthContext.tsx';
 
 interface ExamMode {
   type: 'BCS' | 'Bank' | 'Custom';
@@ -296,6 +297,7 @@ function getSubtopicsForTopic(topicName: string): string[] {
 export default function ExamEngine({ examType, selectedExamMode, onExamCompleted, onTriggerTutor }: ExamEngineProps) {
   
   const currentMode = selectedExamMode || { type: 'BCS' };
+  const { accessToken } = useAuth();
   
   // States
   const [activeTab, setActiveTab] = useState<'syllabus' | 'mastery' | 'builder' | 'simulation' | 'history'>('syllabus');
@@ -1207,7 +1209,10 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
 
           const response = await fetch("/api/ai/adaptive-question", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+            },
             body: JSON.stringify({
               subject: currentQ.subject,
               topic: currentQ.topic,
@@ -1321,7 +1326,11 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
       limit: String(limit),
     });
 
-    const response = await fetch(`/api/bank/questions?${params.toString()}`);
+    const response = await fetch(`/api/bank/questions?${params.toString()}`, {
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+      }
+    });
     if (!response.ok) return [];
     const data = await response.json();
     return data.questions || [];
@@ -1331,7 +1340,10 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
     try {
       await fetch("/api/ai/fallback-log", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({
           subject,
           topic,
@@ -1511,7 +1523,10 @@ export default function ExamEngine({ examType, selectedExamMode, onExamCompleted
       if (deficitAllocations.length > 0) {
         const response = await fetch("/api/ai/batch-questions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+          },
           body: JSON.stringify({
             examType: currentMode.type,
             role: (currentMode as any).role || "",
