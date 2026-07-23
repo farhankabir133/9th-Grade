@@ -2,14 +2,6 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/ok",
-      "dest": "/api/ok.js"
-    },
-    {
-      "src": "/api/debug-circulars",
-      "dest": "/api/debug-circulars.js"
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/api/index.ts"
     },
