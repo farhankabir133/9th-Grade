@@ -2,10 +2,6 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/standalone-test",
-      "dest": "/api/standalone-test.js"
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/api/index.ts"
     },
