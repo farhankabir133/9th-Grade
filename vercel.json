@@ -2,6 +2,10 @@
   "version": 2,
   "routes": [
     {
+      "src": "/api/minimal",
+      "dest": "/api/minimal.js"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/index.ts"
     },
