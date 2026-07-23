@@ -1,8 +1,10 @@
+import { createApp } from "../server.ts";
+
 let app: any = null;
 let error: any = null;
 
 try {
-  const mod = await import("../server");
+  const mod = await import("../server.ts");
   app = mod.createApp();
 } catch (e) {
   error = e;
