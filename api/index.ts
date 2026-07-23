@@ -1,7 +1,11 @@
 import express from "express";
-import { AuthRequest, authMiddleware } from "../server/middleware/auth.middleware";
+import authRouter from "./auth";
 
 const app = express();
+
+app.use(express.json());
+
+app.use("/api/auth", authRouter);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
