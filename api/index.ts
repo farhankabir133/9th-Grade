@@ -2,7 +2,7 @@ let app: any = null;
 let error: any = null;
 
 try {
-  const mod = await import("./server-entry");
+  const mod = await import("./server-entry.ts");
   app = mod.default;
 } catch (e) {
   error = e;
