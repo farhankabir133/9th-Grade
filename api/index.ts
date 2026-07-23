@@ -1,5 +1,21 @@
-import { createApp } from "../server";
+let app: any = null;
+let error: any = null;
 
-const app = createApp();
+try {
+  const mod = await import("../server");
+  app = mod.createApp();
+} catch (e) {
+  error = e;
+  console.error("[api/index] Failed to create app:", e);
+}
 
-export default app;
+export default async (req: any, res: any) => {
+  if (error) {
+    console.error("[api/index] Returning cached error:", error);
+    return res.status(500).json({ error: error.message, stack: error.stack });
+  }
+  if (!app) {
+    return res.status(500).json({ error: "App not initialized" });
+  }
+  return app(req, res);
+};
