@@ -1,5 +1,5 @@
 import express from "express";
-import { UserRepo } from "../repositories/user.repo";
+import { AuthRequest, authMiddleware } from "../server/middleware/auth.middleware";
 
 const app = express();
 
