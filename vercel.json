@@ -2,6 +2,10 @@
   "version": 2,
   "routes": [
     {
+      "src": "/api/test-auth",
+      "dest": "/api/test-auth.js"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/index.ts"
     },
