@@ -1,5 +1,5 @@
 import express from "express";
-import { defaultUserProfile } from "../src/types";
+import { UserRepo } from "../repositories/user.repo";
 
 const app = express();
 
