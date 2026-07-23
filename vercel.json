@@ -2,8 +2,8 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/test-env",
-      "dest": "/api/test-env.js"
+      "src": "/api/(.*)",
+      "dest": "/api/index.ts"
     },
     {
       "src": "/(.*)",
