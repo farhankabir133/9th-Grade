@@ -2,8 +2,8 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/test-auth",
-      "dest": "/api/test-auth.js"
+      "src": "/api/test-env",
+      "dest": "/api/test-env.js"
     },
     {
       "src": "/api/(.*)",
@@ -13,5 +13,7 @@
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
+  ]
+}
   ]
 }
